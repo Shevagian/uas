@@ -1,0 +1,97 @@
+from google.colab import files
+import pandas as pd
+
+print("Silakan upload file Excel Anda...")
+uploaded = files.upload()
+file_name = list(uploaded.keys())[0]
+
+# === LANGKAH 2: Baca data ===
+df = pd.read_excel(file_name)
+df.columns = [col.strip().lower() for col in df.columns]
+
+# Deteksi nama kolom penting
+def cari_kolom(possible_names):
+    for col in df.columns:
+        for name in possible_names:
+            if name in col:
+                return col
+    return None
+
+kolom_produk = cari_kolom(['produk'])
+kolom_jumlah = cari_kolom(['jumlah', 'terjual'])
+kolom_harga = cari_kolom(['harga'])
+kolom_total = cari_kolom(['total'])
+kolom_stok = cari_kolom(['stok akhir'])
+kolom_stok_awal = cari_kolom(['stok awal'])
+kolom_tanggal = cari_kolom(['tanggal'])
+
+# Tampilkan isi data
+print("\n=== Data Penjualan ===")
+print(df)
+
+# === MENU INTERAKTIF ===
+while True:
+    print("\n=============== MENU ===============")
+    print("1. Tampilkan total penjualan per produk")
+    print("2. Tampilkan 3 produk terlaris")
+    print("3. Rekomendasi pengelolaan stok")
+    print("4. Keluar")
+
+    pilihan = input("Masukkan pilihan (1-4): ")
+
+    if pilihan == "1":
+        # Hitung total jumlah terjual dan ambil harga satuan terakhir (asumsi harga stabil per produk)
+        data_grouped = df.groupby(kolom_produk).agg({
+            kolom_jumlah: 'sum',
+            kolom_harga: 'last'  # atau 'mean' jika harga bisa berubah
+        }).reset_index()
+
+        # Hitung total penjualan secara manual
+        data_grouped["Total Penjualan (Rp)"] = data_grouped[kolom_jumlah] * data_grouped[kolom_harga]
+
+        # Urutkan dan tambahkan No
+        data_grouped = data_grouped.sort_values(by=kolom_jumlah, ascending=False).reset_index(drop=True)
+        data_grouped.index += 1
+        data_grouped.index.name = 'No'
+
+        # Format kolom hasil
+        data_grouped = data_grouped[[kolom_produk, kolom_jumlah, "Total Penjualan (Rp)"]]
+        data_grouped.columns = ["Nama Produk", "Total Terjual", "Total Penjualan (Rp)"]
+        data_grouped["Total Penjualan (Rp)"] = data_grouped["Total Penjualan (Rp)"].apply(lambda x: f"Rp{x:,.0f}")
+
+        print("\n============= Total Penjualan per Produk =============")
+        print(data_grouped)
+
+    elif pilihan == "2":
+        penjualan_per_produk = df.groupby(kolom_produk)[kolom_jumlah].sum().reset_index()
+        produk_terlaris = penjualan_per_produk.sort_values(by=kolom_jumlah, ascending=False).head(3).reset_index(drop=True)
+        print("\n============= 3 Produk Terlaris =============")
+        for i, row in produk_terlaris.iterrows():
+            tanda = "(Paling Laris)" if i == 0 else ""
+            print(f"{i+1}. {row[kolom_produk]} - {row[kolom_jumlah]} terjual {tanda}")
+
+    elif pilihan == "3":
+        print("\n============= Rekomendasi Pengelolaan Stok =============")
+
+        # Hitung total terjual per produk
+        total_terjual = df.groupby(kolom_produk)[kolom_jumlah].sum().reset_index()
+
+        # Ambil stok awal & akhir terakhir per produk berdasarkan tanggal terbaru
+        df_sorted = df.sort_values(by=kolom_tanggal)
+        stok_akhir_terakhir = df_sorted.groupby(kolom_produk).tail(1)[[kolom_produk, kolom_stok, kolom_stok_awal]]
+
+        # Gabungkan data
+        df_rekom = pd.merge(total_terjual, stok_akhir_terakhir, on=kolom_produk)
+
+        # Susun ulang kolom
+        df_rekom = df_rekom[[kolom_produk, kolom_stok_awal, kolom_stok, kolom_jumlah]]
+        df_rekom.columns = ["Nama Produk", "Stok Awal", "Stok Akhir", "Total Terjual"]
+
+        print(df_rekom)
+
+    elif pilihan == "4":
+        print("Terima kasih. Program selesai.")
+        break
+
+    else:
+        print("Pilihan tidak valid. Silakan coba lagi.")
